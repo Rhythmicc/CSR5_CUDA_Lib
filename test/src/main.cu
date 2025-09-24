@@ -90,6 +90,11 @@ int call_anonymouslib(char *filename, int m, int n, int nnzA,
     }
 
     err_cuda = cudaDeviceSynchronize();
+    if (err_cuda != cudaSuccess)
+    {
+        fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching spmv!\n", err_cuda);
+        exit(EXIT_FAILURE);
+    }
 
     anonymouslib_timer CSR5Spmv_timer;
     CSR5Spmv_timer.start();
@@ -98,6 +103,11 @@ int call_anonymouslib(char *filename, int m, int n, int nnzA,
     for (int i = 0; i < NUM_RUN; i++)
         err = A.spmv(alpha, d_y);
     err_cuda = cudaDeviceSynchronize();
+    if (err_cuda != cudaSuccess)
+    {
+        fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching spmv!\n", err_cuda);
+        exit(EXIT_FAILURE);
+    }
 
     double CSR5Spmv_time = CSR5Spmv_timer.stop() / (double)NUM_RUN;
     double CSR5Spmv_gflop = gflop/(1.0e+6 * CSR5Spmv_time);
@@ -107,15 +117,6 @@ int call_anonymouslib(char *filename, int m, int n, int nnzA,
              << " ms. Bandwidth = " << gb/(1.0e+6 * CSR5Spmv_time)
              << " GB/s. GFlops = " << CSR5Spmv_gflop  << " GFlops." << endl;
     	*gflops = CSR5Spmv_gflop;
-    }
-
-    
-    if (CSR5Spmv_gflop > 0)
-    {
-        FILE* fout;
-        fout = fopen("./csr5_record.csv", "a");
-        fprintf(fout, "%s,%d,%d,%d,%lf,%lf,%lf\n", filename, m, n, nnzA, CSR5Spmv_csr_csr5_time, CSR5Spmv_time, CSR5Spmv_gflop);
-        fclose(fout);
     }
 
     A.destroy();
@@ -138,7 +139,7 @@ int main(int argc, char ** argv)
 
     // report precision of floating-point
     cout << "------------------------------------------------------" << endl;
-    char  *precision;
+    const char  *precision;
     if (sizeof(VALUE_TYPE) == 4)
     {
         precision = "32-bit Single Precision";
@@ -350,7 +351,7 @@ int main(int argc, char ** argv)
     double gb = getB<int, VALUE_TYPE>(m, nnzA);
     double gflop = getFLOP<int>(nnzA);
 
-    VALUE_TYPE alpha = 1.0;
+    VALUE_TYPE alpha = 2.0;
 
     // compute reference results on a cpu core
     anonymouslib_timer ref_timer;
@@ -383,13 +384,13 @@ int main(int argc, char ** argv)
         if (abs(y_ref[i] - y[i]) > 0.01 * abs(y_ref[i]))
         {
             error_count++;
-//            cout << "ROW [ " << i << " ], NNZ SPAN: "
-//                 << csrRowPtrA[i] << " - "
-//                 << csrRowPtrA[i+1]
-//                 << "\t ref = " << y_ref[i]
-//                 << ", \t csr5 = " << y[i]
-//                 << ", \t error = " << y_ref[i] - y[i]
-//                 << endl;
+           cout << "ROW [ " << i << " ], NNZ SPAN: "
+                << csrRowPtrA[i] << " - "
+                << csrRowPtrA[i+1]
+                << "\t ref = " << y_ref[i]
+                << ", \t csr5 = " << y[i]
+                << ", \t error = " << y_ref[i] - y[i]
+                << endl;
 //            break;
 
 //            //if (abs(y_ref[i] - y[i]) > 0.00001)

@@ -11,8 +11,8 @@ target_include_directories(csr5_cuda PUBLIC
 )
 
 # Add mmio as a separate library
-add_library(mmio STATIC mmio.c)
-target_include_directories(mmio PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>)
+# add_library(mmio STATIC mmio.c)
+# target_include_directories(mmio PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>)
 
 # Link mmio to csr5_cuda
-target_link_libraries(csr5_cuda INTERFACE mmio)
+# target_link_libraries(csr5_cuda INTERFACE mmio)

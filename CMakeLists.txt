@@ -22,7 +22,7 @@ if(BUILD_TEST)
 endif()
 
 # Install the library
-install(TARGETS csr5_cuda mmio
+install(TARGETS csr5_cuda
     EXPORT csr5_cudaTargets
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib

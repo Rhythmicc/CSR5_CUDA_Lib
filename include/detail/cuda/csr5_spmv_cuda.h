@@ -10,8 +10,7 @@ vT candidate(const vT           *d_value_partition,
              const vT           *d_x,
              cudaTextureObject_t d_x_tex,
              const iT           *d_column_index_partition,
-             const iT            candidate_index,
-             const vT            alpha)
+             const iT            candidate_index)
 {
     vT x = 0;
 #if __CUDA_ARCH__ >= 350
@@ -19,7 +18,7 @@ vT candidate(const vT           *d_value_partition,
 #else
     fetch_x<iT>(d_x_tex, d_column_index_partition[candidate_index], &x);
 #endif
-    return d_value_partition[candidate_index] * x;// * alpha;
+    return d_value_partition[candidate_index] * x;
 }
 
 template<typename vT>
@@ -74,7 +73,7 @@ void partition_fast_track(const vT           *d_value_partition,
 
     #pragma unroll
     for (int i = 0; i < c_sigma; i++)
-        sum += candidate<iT, vT>(d_value_partition, d_x, d_x_tex, d_column_index_partition, i * ANONYMOUSLIB_CSR5_OMEGA + lane_id, alpha);
+        sum += candidate<iT, vT>(d_value_partition, d_x, d_x_tex, d_column_index_partition, i * ANONYMOUSLIB_CSR5_OMEGA + lane_id);
 
 #if __CUDA_ARCH__ >= 300 // use shfl intrinsic
     sum = sum_32_shfl<vT>(sum);
@@ -84,7 +83,7 @@ void partition_fast_track(const vT           *d_value_partition,
     s_sum[lane_id] = sum;
     sum_32<vT>(s_sum, lane_id);
     if (!lane_id)
-        d_calibrator[par_id] = s_sum[0];
+        d_calibrator[par_id] = s_sum[0] * alpha;
 #endif
 }
 
@@ -141,7 +140,7 @@ void partition_normal_track(const iT           *d_column_index_partition,
     start = !local_bit;
     direct = local_bit & (bool)lane_id;
 
-    sum = candidate<iT, vT>(d_value_partition, d_x, d_x_tex, d_column_index_partition, lane_id, alpha);
+    sum = candidate<iT, vT>(d_value_partition, d_x, d_x_tex, d_column_index_partition, lane_id);
 
     #pragma unroll
     for (int i = 1; i < c_sigma; i++)
@@ -160,8 +159,10 @@ void partition_normal_track(const iT           *d_column_index_partition,
 
         if (local_bit)
         {
-            if (direct)
-                d_y[empty_rows ? d_partition_descriptor_offset[offset_pointer + y_offset] : y_offset] = sum;
+            if (direct) {
+                int off = empty_rows ? d_partition_descriptor_offset[offset_pointer + y_offset] : y_offset;
+                d_y[off] = sum * alpha;
+            }
             else
                 first_sum = sum;
         }
@@ -172,7 +173,7 @@ void partition_normal_track(const iT           *d_column_index_partition,
         sum = local_bit ? 0 : sum;
         stop += local_bit;
 
-        sum += candidate<iT, vT>(d_value_partition, d_x, d_x_tex, d_column_index_partition, i * ANONYMOUSLIB_CSR5_OMEGA + lane_id, alpha);
+        sum += candidate<iT, vT>(d_value_partition, d_x, d_x_tex, d_column_index_partition, i * ANONYMOUSLIB_CSR5_OMEGA + lane_id);
     }
 
     first_sum = direct ? first_sum : sum;
@@ -192,11 +193,11 @@ void partition_normal_track(const iT           *d_column_index_partition,
 
     // step 3-2. write sums to result array
     if (direct)
-        d_y[empty_rows ? d_partition_descriptor_offset[offset_pointer + y_offset] : y_offset] = last_sum;
+        d_y[empty_rows ? d_partition_descriptor_offset[offset_pointer + y_offset] : y_offset] = last_sum * alpha;
 
     // the first/last value of the first thread goes to calibration
     if (!lane_id)
-        d_calibrator[par_id] = direct ? first_sum : last_sum;
+        d_calibrator[par_id] = (direct ? first_sum : last_sum) * alpha;
 }
 
 template<typename iT, typename uiT, typename vT, int c_sigma>
@@ -328,7 +329,7 @@ void spmv_csr5_calibrate_kernel(const uiT *d_partition_pointer,
     volatile __shared__ vT  s_calibrator[ANONYMOUSLIB_THREAD_GROUP];
     volatile __shared__ vT  s_sum[ANONYMOUSLIB_THREAD_GROUP / ANONYMOUSLIB_THREAD_BUNCH];
 
-    s_partition_pointer[local_id] = global_id < p-1 ? d_partition_pointer[global_id] & 0x7FFFFFFF : -1;
+    s_partition_pointer[local_id] = global_id < p-1 ? d_partition_pointer[global_id] & 0x7FFFFFFF : 0xFFFFFFFF;
     s_calibrator[local_id] = sum = global_id < p-1 ? d_calibrator[global_id] : 0;
     __syncthreads();
 
@@ -403,7 +404,7 @@ void spmv_csr5_tail_partition_kernel(const iT           *d_row_pointer,
     vT sum = 0;
 
     for (iT idx = local_id + row_start; idx < row_stop; idx += ANONYMOUSLIB_CSR5_OMEGA)
-        sum += candidate<iT, vT>(d_value, d_x, d_x_tex, d_column_index, idx, alpha);
+        sum += candidate<iT, vT>(d_value, d_x, d_x_tex, d_column_index, idx);
 
 #if __CUDA_ARCH__ >= 300 // use shfl intrinsic
     sum = sum_32_shfl<vT>(sum);
@@ -414,8 +415,10 @@ void spmv_csr5_tail_partition_kernel(const iT           *d_row_pointer,
     sum = s_sum[local_id];
 #endif
 
-    if (!local_id)
+    if (!local_id) {
+        sum *= alpha;
         d_y[row_id] = !blockIdx.x ? d_y[row_id] + sum : sum;
+    }
 }
 
 
