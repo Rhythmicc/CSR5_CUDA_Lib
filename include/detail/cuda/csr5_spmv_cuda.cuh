@@ -1,8 +1,8 @@
 #ifndef CSR5_SPMV_H
 #define CSR5_SPMV_H
 
-#include "common_cuda.h"
-#include "utils_cuda.h"
+#include "common_cuda.cuh"
+#include "utils_cuda.cuh"
 
 template<typename iT, typename vT>
 __inline__ __device__
@@ -78,7 +78,7 @@ void partition_fast_track(const vT           *d_value_partition,
 #if __CUDA_ARCH__ >= 300 // use shfl intrinsic
     sum = sum_32_shfl<vT>(sum);
     if (!lane_id)
-        d_calibrator[par_id] = sum;
+        d_calibrator[par_id] = sum * alpha;
 #else // use smem
     s_sum[lane_id] = sum;
     sum_32<vT>(s_sum, lane_id);
@@ -161,7 +161,7 @@ void partition_normal_track(const iT           *d_column_index_partition,
         {
             if (direct) {
                 int off = empty_rows ? d_partition_descriptor_offset[offset_pointer + y_offset] : y_offset;
-                d_y[off] = sum * alpha;
+                d_y[off] += sum * alpha;
             }
             else
                 first_sum = sum;
@@ -192,12 +192,14 @@ void partition_normal_track(const iT           *d_column_index_partition,
     last_sum += (start <= stop) ? sum : 0;
 
     // step 3-2. write sums to result array
-    if (direct)
-        d_y[empty_rows ? d_partition_descriptor_offset[offset_pointer + y_offset] : y_offset] = last_sum * alpha;
+    if (direct) {
+        int off = empty_rows ? d_partition_descriptor_offset[offset_pointer + y_offset] : y_offset;
+        d_y[off] += last_sum * alpha;
+    }
 
     // the first/last value of the first thread goes to calibration
     if (!lane_id)
-        d_calibrator[par_id] = (direct ? first_sum : last_sum) * alpha;
+        d_calibrator[par_id] = (direct ? first_sum : last_sum) * alpha; // + beta * d_calibrator[par_id];
 }
 
 template<typename iT, typename uiT, typename vT, int c_sigma>
@@ -416,9 +418,35 @@ void spmv_csr5_tail_partition_kernel(const iT           *d_row_pointer,
 #endif
 
     if (!local_id) {
-        sum *= alpha;
-        d_y[row_id] = !blockIdx.x ? d_y[row_id] + sum : sum;
+        d_y[row_id] += sum * alpha;
     }
+}
+
+template<typename iT, typename vT>
+__global__ void scale_vector_kernel(const iT m,
+                                    const vT beta,
+                                    vT       *d_y)
+{
+    int global_id = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (global_id < m)
+        d_y[global_id] = beta * d_y[global_id];
+}
+
+template<typename iT, typename vT>
+int scale_y(const iT   m,
+            const vT   beta,
+            vT         *d_y)
+{
+    int num_threads = ANONYMOUSLIB_THREAD_GROUP;
+    int num_blocks = ceil ((double)m / (double)num_threads);
+
+    if (beta == (vT)0.0)
+        cudaMemset(d_y, 0, sizeof(vT) * m);
+    else if (beta != (vT)1.0)
+        scale_vector_kernel<iT, vT><<< num_blocks, num_threads >>>(m, beta, d_y);
+
+    return ANONYMOUSLIB_SUCCESS;
 }
 
 
@@ -439,6 +467,7 @@ int csr5_spmv(const int                 sigma,
               ANONYMOUSLIB_VT              *calibrator,
               const ANONYMOUSLIB_IT         tail_partition_start,
               const ANONYMOUSLIB_VT         alpha,
+              const ANONYMOUSLIB_VT         beta,
               const ANONYMOUSLIB_VT        *x,
               cudaTextureObject_t       x_tex,
               ANONYMOUSLIB_VT              *y)
@@ -447,6 +476,8 @@ int csr5_spmv(const int                 sigma,
 
     int num_threads = ANONYMOUSLIB_THREAD_GROUP;
     int num_blocks = ceil ((double)(p-1) / (double)(num_threads / ANONYMOUSLIB_CSR5_OMEGA));
+
+    scale_y<ANONYMOUSLIB_IT, ANONYMOUSLIB_VT>(m, beta, y);
 
     switch (sigma)
     {

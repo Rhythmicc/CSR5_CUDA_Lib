@@ -2,11 +2,11 @@
 #define ANONYMOUSLIB_CUDA_H
 
 #include "detail/utils.h"
-#include "detail/cuda/utils_cuda.h"
+#include "detail/cuda/utils_cuda.cuh"
 
-#include "detail/cuda/common_cuda.h"
-#include "detail/cuda/format_cuda.h"
-#include "detail/cuda/csr5_spmv_cuda.h"
+#include "detail/cuda/common_cuda.cuh"
+#include "detail/cuda/format_cuda.cuh"
+#include "detail/cuda/csr5_spmv_cuda.cuh"
 
 template <class ANONYMOUSLIB_IT, class ANONYMOUSLIB_UIT, class ANONYMOUSLIB_VT>
 class anonymouslibHandle
@@ -19,6 +19,8 @@ public:
     int asCSR5();
     int setX(ANONYMOUSLIB_VT *x);
     int spmv(const ANONYMOUSLIB_VT alpha, ANONYMOUSLIB_VT *y);
+    // 新增：支持 y = alpha * A * x + beta * y 形式
+    int spmv(const ANONYMOUSLIB_VT alpha, const ANONYMOUSLIB_VT beta, ANONYMOUSLIB_VT *y);
     int destroy();
     void setSigma(int sigma);
 
@@ -263,12 +265,19 @@ template <class ANONYMOUSLIB_IT, class ANONYMOUSLIB_UIT, class ANONYMOUSLIB_VT>
 int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::spmv(const ANONYMOUSLIB_VT  alpha,
                                                                  ANONYMOUSLIB_VT       *y)
 {
+    // 兼容旧接口：等价于 beta = 0
+    return spmv(alpha, (ANONYMOUSLIB_VT)0, y);
+}
+
+template <class ANONYMOUSLIB_IT, class ANONYMOUSLIB_UIT, class ANONYMOUSLIB_VT>
+int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::spmv(const ANONYMOUSLIB_VT  alpha,
+                                                                 const ANONYMOUSLIB_VT  beta,
+                                                                 ANONYMOUSLIB_VT       *y)
+{
     int err = ANONYMOUSLIB_SUCCESS;
 
     if (_format == ANONYMOUSLIB_FORMAT_CSR)
-    {
         return ANONYMOUSLIB_UNSUPPORTED_CSR_SPMV;
-    }
 
     if (_format == ANONYMOUSLIB_FORMAT_CSR5)
     {
@@ -278,7 +287,7 @@ int anonymouslibHandle<ANONYMOUSLIB_IT, ANONYMOUSLIB_UIT, ANONYMOUSLIB_VT>::spmv
                   _csr5_partition_pointer, _csr5_partition_descriptor,
                   _csr5_partition_descriptor_offset_pointer, _csr5_partition_descriptor_offset,
                   _temp_calibrator, _tail_partition_start,
-                  alpha, _x, _x_tex, /*beta,*/ y);
+                  alpha, beta, _x, _x_tex, y);
     }
 
     return err;

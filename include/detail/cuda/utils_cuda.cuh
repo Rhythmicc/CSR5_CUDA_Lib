@@ -1,7 +1,7 @@
 #ifndef UTILS_CUDA_H
 #define UTILS_CUDA_H
 
-#include "common_cuda.h"
+#include "common_cuda.cuh"
 
 struct anonymouslib_timer {
     cudaEvent_t start_event, stop_event;

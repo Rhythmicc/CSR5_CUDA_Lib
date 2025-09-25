@@ -92,7 +92,7 @@ handle.setX(d_x);                 // 绑定 x（创建 texture）
 handle.setSigma(ANONYMOUSLIB_AUTO_TUNED_SIGMA); // 或手工设定值
 handle.warmup();                  // 可选：初始化内核上下文
 handle.asCSR5();                  // 执行 3 步转换
-handle.spmv(alpha, d_y);          // y = alpha * A * x  (beta 固定为 0)
+handle.spmv(alpha, beta, d_y);    // y = alpha * A * x + beta * y
 handle.destroy();                 // 回收 texture 并回退为 CSR
 ```
 
@@ -100,7 +100,7 @@ handle.destroy();                 // 回收 texture 并回退为 CSR
 - `inputCSR(nnz, rowPtr, colIdx, val)`：传入 GPU 端 CSR 指针。
 - `setSigma(int)`：若为 `ANONYMOUSLIB_AUTO_TUNED_SIGMA`，内部按 nnz/row 范围选择 {4, nnz/row, 32, 6} 之一。
 - `asCSR5()`：分配并生成 partition_pointer / descriptor / offset / AoSoA 变换。
-- `spmv(alpha, y)`：当前实现相当于 `y = alpha * A * x`；无显式 beta 参数。
+- `spmv(alpha, beta, y)`：执行 `y = alpha * A * x + beta * y`。当 `beta != 0` 时会内部备份 y 并执行一次 AXPY 样式融合；若性能敏感可自行维持两份向量以避免拷贝。
 - `asCSR()`：逆转换回 CSR（释放 CSR5 相关 GPU 内存）。
 - `destroy()`：销毁 texture + 调用 `asCSR()`。
 

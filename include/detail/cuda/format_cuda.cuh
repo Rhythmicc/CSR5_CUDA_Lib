@@ -1,8 +1,8 @@
 #ifndef FORMAT_H
 #define FORMAT_H
 
-#include "common_cuda.h"
-#include "utils_cuda.h"
+#include "common_cuda.cuh"
+#include "utils_cuda.cuh"
 
 int format_warmup()
 {
