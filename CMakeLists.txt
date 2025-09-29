@@ -3,13 +3,13 @@ cmake_minimum_required(VERSION 3.18)
 # Set install prefix
 set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/install" CACHE PATH "Installation directory")
 
+# Set CUDA architectures
+set(CMAKE_CUDA_ARCHITECTURES 75 80 86 89 90 120)
+
 project(CSR5_CUDA VERSION 1.0.0 LANGUAGES C CXX CUDA)
 
 # Find CUDA
 find_package(CUDA REQUIRED)
-
-# Set CUDA architectures
-set(CMAKE_CUDA_ARCHITECTURES 75 80 86 89 90 120)
 
 # Option to build test
 option(BUILD_TEST "Build the test executable" ON)
